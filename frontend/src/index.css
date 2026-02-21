@@ -1,0 +1,218 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+    --color-void: #020408;
+    --color-surface: #0B101B;
+    --color-brand-red: #ED1C24;
+
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --animate-fade-in: fade-in 0.5s ease-out;
+
+    @keyframes fade-in {
+        0% {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        100% {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+}
+
+:root {
+    --bg-void: #020408;
+    --bg-surface: #0B101B;
+    --glass-border: rgba(255, 255, 255, 0.05);
+    --glass-border-hover: rgba(59, 130, 246, 0.2);
+    /* Spring Physics: "Heavy but bouncy" */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body {
+    background-color: var(--bg-void);
+    color: #e2e8f0;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+
+    /* Complex Layered Background */
+    background-image:
+        /* Layer 4: Vignette (Dark edges focus) */
+        radial-gradient(circle at 50% 50%, transparent 50%, rgba(2, 4, 8, 0.9) 100%),
+        /* Layer 2 & 3: Grid */
+        linear-gradient(rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+        /* Layer 1: Radial Glow */
+        radial-gradient(circle at 50% 0%, rgba(30, 58, 138, 0.1) 0%, transparent 60%);
+    background-size:
+        100% 100%,
+        50px 50px,
+        50px 50px,
+        100% 100%;
+    background-position:
+        0 0,
+        0 0,
+        0 0,
+        top center;
+    background-repeat: no-repeat, repeat, repeat, no-repeat;
+    min-height: 100vh;
+}
+
+/* Glass Panel Mixin */
+.glass-panel {
+    background: linear-gradient(180deg, rgba(19, 27, 46, 0.7) 0%, rgba(15, 21, 35, 0.8) 100%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+        0 4px 6px -1px rgba(0, 0, 0, 0.3),
+        0 2px 4px -1px rgba(0, 0, 0, 0.15);
+}
+
+.card {
+    background: linear-gradient(180deg, rgba(19, 27, 46, 0.8) 0%, rgba(15, 21, 35, 0.9) 100%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+        0 10px 15px -3px rgba(0, 0, 0, 0.3),
+        0 4px 6px -2px rgba(0, 0, 0, 0.15);
+    transition: all 0.5s var(--ease-spring);
+    @apply rounded-xl;
+}
+
+/* Optical Refraction: Prismatic Border */
+.prism-border {
+    position: relative;
+}
+
+.prism-border::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(45deg, rgba(34, 211, 238, 0), rgba(34, 211, 238, 0.1), rgba(168, 85, 247, 0.1), rgba(168, 85, 247, 0));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.5;
+    transition: opacity 0.3s;
+}
+
+.prism-border:hover::after {
+    opacity: 1;
+}
+
+/* Hover Physics - Subtler */
+.hover-scale {
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.hover-scale:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* Utilities */
+.text-brand-red {
+    color: #ED1C24;
+}
+
+.bg-brand-red {
+    background-color: #ED1C24;
+}
+
+.border-brand-red {
+    border-color: #ED1C24;
+}
+
+.font-numbers {
+    font-family: var(--font-mono);
+}
+
+/* Animation Utils */
+.animate-fade-in {
+    animation: fade-in 0.5s ease-out forwards;
+}
+
+.delay-100 {
+    animation-delay: 100ms;
+}
+
+.delay-200 {
+    animation-delay: 200ms;
+}
+
+.delay-300 {
+    animation-delay: 300ms;
+}
+
+.delay-500 {
+    animation-delay: 500ms;
+}
+
+.delay-700 {
+    animation-delay: 700ms;
+}
+
+/* 3.2 Simulation Sliders */
+@layer components {
+    .simulator-slider {
+        @apply appearance-none bg-transparent cursor-pointer w-full h-6 relative z-10;
+    }
+
+    .simulator-slider::-webkit-slider-runnable-track {
+        @apply h-1 bg-slate-800 rounded-full;
+    }
+
+    .simulator-slider::-webkit-slider-thumb {
+        @apply appearance-none w-4 h-4 bg-white rounded-full border-2 border-slate-900 shadow-lg shadow-blue-500/50 -mt-1.5 transition-transform hover:scale-110;
+    }
+
+    /* Critical Slider Variant */
+    .simulator-slider-critical::-webkit-slider-thumb {
+        @apply shadow-lg shadow-red-500/50;
+    }
+
+    /* 3.1 Standard Card Header */
+    .card-header {
+        @apply px-5 py-4 border-b border-white/5 bg-white/5 flex justify-between items-center;
+    }
+
+    .card-title {
+        @apply text-sm font-medium text-slate-200 tracking-wide;
+    }
+
+    .card-subtitle {
+        @apply text-[10px] text-slate-500 font-mono uppercase tracking-wider;
+    }
+}

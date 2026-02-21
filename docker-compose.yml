@@ -1,0 +1,44 @@
+services:
+  # ─── Backend API ────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sentinel-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_SOURCE=auto
+      - PORT=8000
+    volumes:
+      # Persist settings across container restarts
+      - ./backend/data:/app/data
+      # Mount for ML models (if available)
+      - ./backend/ml:/app/ml:ro
+    # Required for smartctl to access real disk devices
+    # Remove 'privileged' if you only want simulated data
+    privileged: true
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ─── Frontend (React + Nginx) ────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sentinel-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: sentinel-network

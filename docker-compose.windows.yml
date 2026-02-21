@@ -1,0 +1,37 @@
+# docker-compose.windows.yml
+# ══════════════════════════════════════════════════════════════════════════════
+# Windows Docker Override — Physical Disk Passthrough via WSL2
+#
+# USAGE (run from project root in PowerShell as Administrator):
+#   1. First run setup: .\windows_setup\setup-windows.ps1
+#   2. Then start:      docker compose -f docker-compose.yml -f docker-compose.windows.yml up --build
+#
+# HOW IT WORKS:
+#   Physical drives (\\.\PhysicalDrive0, etc.) are mounted into WSL2 via
+#   `wsl --mount`, which makes them appear as /dev/sda, /dev/sdb, etc.
+#   inside the Docker Linux container. smartctl can then read them.
+#
+# REQUIREMENTS:
+#   - Windows 11 or Windows 10 Build 21364+
+#   - Docker Desktop with WSL2 backend
+#   - Run Docker + PowerShell as Administrator
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+  backend:
+    # Override the backend service to run privileged with physical disk devices
+    privileged: true
+    devices:
+      # Primary storage (NVMe / SATA SSD)
+      - "/dev/sda:/dev/sda"
+      # Secondary drives (HDD, external)
+      - "/dev/sdb:/dev/sdb"
+      - "/dev/sdc:/dev/sdc"
+      - "/dev/sdd:/dev/sdd"
+    environment:
+      - DATA_SOURCE=auto
+      - PORT=8000
+      - WINDOWS_DISK_PASSTHROUGH=true # Hint to backend: WSL2 device mode
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/ml:/app/ml:ro

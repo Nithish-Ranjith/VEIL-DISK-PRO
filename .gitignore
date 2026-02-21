@@ -1,0 +1,32 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/data/settings.json
+*.py[cod]
+*.egg-info/
+.env
+
+# ML Models (Large files - add separately or use Git LFS)
+backend/ml/saved_models/*.keras
+backend/ml/saved_models/*.pkl
+
+# Node.js
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+*.json
+backend/ml/data/

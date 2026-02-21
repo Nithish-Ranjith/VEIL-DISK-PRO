@@ -1,0 +1,11 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+# tensorflow>=2.16.0  # Uncomment if you have ML models
+# scikit-learn>=1.4.0  # Uncomment if you have ML models
+numpy>=1.26.4
+pandas>=2.1.4
+pydantic==2.4.2
+python-multipart==0.0.6
+# Windows only — required for Layer 2 (WMI) SMART reading
+# Install on Windows: pip install pywin32
+# pywin32>=306
