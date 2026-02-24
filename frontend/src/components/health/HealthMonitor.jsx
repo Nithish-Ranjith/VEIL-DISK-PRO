@@ -1,13 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
 import HealthTimelineChart from './HealthTimelineChart';
 import ExplainableAI from '../simulation/ExplainableAI';
 import WriteOptimizationCard from '../optimization/WriteOptimizationCard';
+import { API_BASE } from '../../api/client';
 
 const HealthMonitor = ({ data, urgency, driveId, compressionData }) => {
     if (!data) return <div className="p-4 text-gray-400">Loading health data...</div>;
 
     const { health, smart_current, compression } = data;
     const score = health.score ?? health.current_score ?? 0;
+    const [downloadingReport, setDownloadingReport] = useState(false);
+
+    const handleWarrantyReport = async () => {
+        if (!driveId || downloadingReport) return;
+        setDownloadingReport(true);
+        try {
+            const url = `${API_BASE.replace('/api/v1', '')}/api/v1/report/${driveId}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Server error ${res.status}`);
+            const blob = await res.blob();
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `SENTINEL_Warranty_Claim_${driveId}_${new Date().toISOString().slice(0, 10)}.pdf`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) {
+            console.error('Warranty report failed:', e);
+            alert('Failed to generate warranty report. Please check the backend is running.');
+        } finally {
+            setDownloadingReport(false);
+        }
+    };
 
     // Write optimization values from real compression data
     const writesReduced = compressionData?.write_reduction_pct
@@ -69,11 +92,34 @@ const HealthMonitor = ({ data, urgency, driveId, compressionData }) => {
             <div className="card col-span-12 lg:col-span-8 p-0 overflow-hidden animate-fade-in delay-200 border border-white/5 hover-scale prism-border relative">
                 <div className="card-header py-3">
                     <h3 className="card-title text-xs font-bold uppercase tracking-wider text-slate-400">SMART Metrics</h3>
-                    <button className="text-gray-500 hover:text-white transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                    </button>
+                    <div className="flex items-center gap-3">
+                        {/* Warranty Claim Report — downloads a PDF using SMART data for official drive warranty submissions */}
+                        <button
+                            onClick={handleWarrantyReport}
+                            disabled={downloadingReport}
+                            title="Download a SMART health PDF for warranty claim submission"
+                            className="flex items-center gap-1.5 px-3 py-1 rounded bg-amber-500/10 border border-amber-500/25 text-amber-400 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all text-[10px] font-bold uppercase tracking-wider disabled:opacity-50"
+                        >
+                            {downloadingReport ? (
+                                <>
+                                    <span className="w-2.5 h-2.5 border border-amber-400 border-t-transparent rounded-full animate-spin" />
+                                    <span>Generating...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>Warranty Claim Report</span>
+                                </>
+                            )}
+                        </button>
+                        <button className="text-gray-500 hover:text-white transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Overlay for Missing SMART Data (Real Drive, No Permissions/Tool) */}

@@ -91,16 +91,32 @@ app = FastAPI(
     version="2.0.0",
 )
 
+# CORS: read from env var ALLOWED_ORIGINS (comma-separated) or default to localhost dev ports
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
+if _raw_origins.strip() == "*" or _raw_origins.strip() == "":
+    # Dev mode — allow all origins
+    _cors_origins = ["*"]
+    _cors_credentials = False   # credentials=True not allowed with wildcard
+else:
+    _cors_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    _cors_credentials = True
+
+# Always include common local dev ports
+_local_dev_ports = [
+    "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
+    "http://localhost:5176", "http://localhost:3000", "http://localhost:8080",
+    "http://127.0.0.1:5173", "http://127.0.0.1:3000",
+]
+if "*" not in _cors_origins:
+    for _p in _local_dev_ports:
+        if _p not in _cors_origins:
+            _cors_origins.append(_p)
+    _cors_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://localhost:5176",
-        "http://localhost:3000",
-    ],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -136,6 +152,15 @@ async def root():
         "version":   "2.0.0",
         "timestamp": datetime.now().isoformat(),
     }
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Docker / load-balancer health check endpoint.
+    Returns 200 OK when the server is ready to serve traffic.
+    """
+    return {"status": "ok", "version": "2.0.0"}
 
 
 @app.get("/api/v1/system/status")
@@ -728,6 +753,134 @@ async def reset_settings():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# REPORT ENDPOINT — PDF generation
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/v1/report/{drive_id}")
+async def generate_drive_report(drive_id: str):
+    """
+    Generate and download a PDF health report for a drive.
+    Uses reportlab to build a styled, printable report.
+    """
+    from fastapi.responses import StreamingResponse
+    from utils.pdf_generator import generate_pdf_report
+
+    try:
+        data_source    = app_settings.get("data_source", "auto")
+        drives         = smart_reader.get_all_drives(forced_mode=data_source)
+        drive_info     = next((d for d in drives if d["drive_id"] == drive_id), None)
+
+        if not drive_info:
+            raise HTTPException(status_code=404, detail=f"Drive '{drive_id}' not found")
+
+        history    = smart_reader.get_smart_history(drive_id, days=30)
+        prediction = health_engine.predict(history)
+
+        report_data = {
+            "model":         drive_info.get("model", "Unknown"),
+            "serial_number": drive_info.get("serial", "Unknown"),
+            "capacity_gb":   round(drive_info.get("size", 0) / 1e9, 1) if drive_info.get("size") else 0,
+            "health_score":  prediction["health_score"],
+            "risk_level":    prediction["risk_level"],
+            "days_to_failure": prediction["days_to_failure"],
+            "smart_history": [h.get("smart_values", h) for h in history],
+        }
+
+        pdf_buffer = generate_pdf_report(report_data)
+        filename   = f"SENTINEL_REPORT_{drive_id}_{datetime.now().strftime('%Y%m%d')}.pdf"
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PDF report error for {drive_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BACKUP ENDPOINT — OS-level backup trigger
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/v1/drive/{drive_id}/backup")
+async def trigger_backup(drive_id: str):
+    """
+    Trigger an OS-level backup for the drive.
+    macOS : tmutil startbackup --auto --rotation --destination (Time Machine)
+    Linux : rsync -av --stats /home /tmp/sentinel_backup_{drive_id}
+    Windows: wbadmin start backup (requires admin)
+
+    Returns immediately with the command status — backup runs in background.
+    """
+    system = platform.system()
+    result = {"drive_id": drive_id, "platform": system}
+
+    try:
+        if system == "Darwin":
+            proc = subprocess.run(
+                ["tmutil", "startbackup", "--auto", "--rotation"],
+                capture_output=True, text=True, timeout=10
+            )
+            if proc.returncode == 0:
+                result["status"]  = "started"
+                result["message"] = "Time Machine backup started in background."
+            else:
+                # If Time Machine isn't configured, fall back to a friendly message
+                result["status"]  = "unavailable"
+                result["message"] = "Time Machine not configured. Please set up Time Machine in System Preferences for automated backups."
+                result["manual_steps"] = [
+                    "Open System Preferences → Time Machine",
+                    "Select a backup disk",
+                    "Enable automatic backups",
+                ]
+
+        elif system == "Linux":
+            import tempfile
+            backup_dest = f"/tmp/sentinel_backup_{drive_id}"
+            os.makedirs(backup_dest, exist_ok=True)
+            proc = subprocess.Popen(
+                ["rsync", "-av", "--stats", os.path.expanduser("~"), backup_dest],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            result["status"]      = "started"
+            result["message"]     = f"rsync backup started (PID {proc.pid}). Destination: {backup_dest}"
+            result["backup_dest"] = backup_dest
+
+        elif system == "Windows":
+            proc = subprocess.run(
+                ["wbadmin", "start", "backup", "-quiet"],
+                capture_output=True, text=True, timeout=10,
+                creationflags=0x08000000
+            )
+            if proc.returncode == 0:
+                result["status"]  = "started"
+                result["message"] = "Windows Backup started via wbadmin."
+            else:
+                result["status"]  = "unavailable"
+                result["message"] = "Windows Backup requires admin rights. Run the app as Administrator."
+        else:
+            result["status"]  = "unsupported"
+            result["message"] = f"Automatic backup not implemented for {system}."
+
+    except FileNotFoundError as e:
+        result["status"]  = "tool_missing"
+        result["message"] = f"Backup tool not found: {e}. Ensure Time Machine / rsync / wbadmin is available."
+    except subprocess.TimeoutExpired:
+        result["status"]  = "started"
+        result["message"] = "Backup command launched (did not wait for completion)."
+    except Exception as e:
+        logger.error(f"Backup error for {drive_id}: {e}")
+        result["status"]  = "error"
+        result["message"] = str(e)
+
+    result["timestamp"] = datetime.now().isoformat()
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # SIMULATION / TESTING ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -755,6 +908,17 @@ async def run_simulation_cycle():
     except Exception as e:
         logger.error(f"Simulation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LEGACY ROUTES — What-If Simulator, simulated drives
+# ══════════════════════════════════════════════════════════════════════════════
+try:
+    from routes.status import router as status_router
+    app.include_router(status_router, prefix="/api/v1")
+    logger.info("✅ Legacy status/what-if router mounted at /api/v1")
+except Exception as _e:
+    logger.warning(f"⚠️  Legacy router not mounted: {_e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

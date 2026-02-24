@@ -6,7 +6,7 @@ import axios from 'axios';
 
 // In Docker: nginx proxies /api → backend container, so we use a relative path.
 // In local dev: Vite uses http://localhost:8000 directly.
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
 
 const api = axios.create({
     baseURL: API_BASE,

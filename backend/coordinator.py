@@ -273,11 +273,18 @@ class IntelligentCoordinator:
     
     def _save_current_health(self, drive_id: str, health_score: float):
         health_file = os.path.join(self.HEALTH_CACHE_DIR, f"health_cache_{drive_id}.json")
-        with open(health_file, 'w') as f:
-            json.dump({
-                "health_score": health_score,
-                "timestamp": datetime.now().isoformat()
-            }, f)
+        try:
+            with open(health_file, 'w') as f:
+                json.dump({
+                    "health_score": health_score,
+                    "timestamp": datetime.now().isoformat()
+                }, f)
+        except PermissionError:
+            import logging
+            logging.warning(f"Permission denied writing to {health_file}. Was the backend previously run with sudo? You can safely ignore this or delete the file to fix it.")
+        except Exception as e:
+            import logging
+            logging.error(f"Error writing health cache: {e}")
     
     def _build_status(self, drive_id, current_prediction,
                        health_drop, should_intervene, intervention_result) -> Dict:

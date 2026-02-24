@@ -168,7 +168,12 @@ class SMARTReader:
                     
                     if smart_data:
                         # Merge SMART data with base info
+                        # Save the human-readable model first — smartctl may overwrite it with "Unknown"
+                        good_model = base_info.get("media_name") or base_info.get("model")
                         base_info.update(smart_data)
+                        # Restore model if smartctl returned nothing useful (Apple Silicon without root)
+                        if base_info.get("model") in (None, "Unknown", "Unknown Model", ""):
+                            base_info["model"] = good_model or "Unknown Model"
                         print(f"[SMARTReader DEBUG] -> SMART data obtained for {disk_id}")
                     else:
                         # SMART failed (permissions/missing). 
@@ -211,15 +216,31 @@ class SMARTReader:
                 return None
                 
             info = plistlib.loads(result.stdout)
-            
+
+            # Apple Silicon plist uses 'MediaName' and 'IORegistryEntryName'
+            # There's no generic 'Model' or 'Serial Number' key — use the best available
+            model = (
+                info.get("MediaName")                  # "APPLE SSD AP0512Z"
+                or info.get("IORegistryEntryName", "").replace(" Media", "")
+                or info.get("Model")                   # present on Intel Macs + external drives
+                or "Unknown Model"
+            )
+
+            # Serial: present on external drives via diskutil; Apple internal SSDs omit it
+            serial = (
+                info.get("VolumeUUID")                 # use UUID as unique ID if no serial
+                or info.get("DiskUUID")
+                or "N/A"
+            )
+
             return {
                 "drive_id":     info.get("DeviceIdentifier", disk_id),
                 "device_path":  f"/dev/{disk_id}",
-                "model":        info.get("Model", info.get("MediaName", "Unknown Model")),
-                "serial":       info.get("Serial Number", "Unknown Serial"),
+                "model":        model,
+                "serial":       serial,
                 "size":         info.get("TotalSize", 0),
                 "is_simulated": False,
-                "protocol":     info.get("BusProtocol", "Unknown"),
+                "protocol":     info.get("BusProtocol", info.get("MediaType", "Unknown")),
                 "media_name":   info.get("MediaName", ""),
                 "smart_values": {},  # Will be populated if SMART succeeds
                 "timestamp":    datetime.now().isoformat()
@@ -227,6 +248,7 @@ class SMARTReader:
         except Exception as e:
             print(f"[SMARTReader] diskutil info failed for {disk_id}: {e}")
             return None
+
     
     def _get_drives_windows(self) -> List[Dict]:
         """
