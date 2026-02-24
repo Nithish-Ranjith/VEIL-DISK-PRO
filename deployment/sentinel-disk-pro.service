@@ -1,0 +1,47 @@
+[Unit]
+Description=SENTINEL-DISK Pro Backend (Gunicorn + Uvicorn Workers)
+Documentation=https://github.com/yourorg/sentinel-disk-pro
+After=network.target
+
+[Service]
+Type=notify
+User=sentinel
+Group=sentinel
+WorkingDirectory=/opt/sentinel-disk-pro/backend
+
+# Add smartctl to PATH (adjust for your system)
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Load environment from .env file
+EnvironmentFile=/opt/sentinel-disk-pro/.env
+
+# Production command — 4 uvicorn workers via gunicorn
+ExecStart=/opt/sentinel-disk-pro/backend/venv/bin/gunicorn main:app -c gunicorn.conf.py
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# Process capabilities required for smartctl direct disk access
+# CapabilityBoundingSet=CAP_SYS_RAWIO CAP_DAC_READ_SEARCH
+# AmbientCapabilities=CAP_SYS_RAWIO CAP_DAC_READ_SEARCH
+# NOTE: Uncomment these lines if running without root. Also requires smartctl to
+#       honour setuid or capabilities (smartmontools >= 7.3 supports this).
+
+# Graceful restart
+KillMode=mixed
+TimeoutStopSec=30
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/sentinel-disk-pro/backend/data
+
+[Install]
+WantedBy=multi-user.target

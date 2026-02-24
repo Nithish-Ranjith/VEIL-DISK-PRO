@@ -10,8 +10,12 @@ Wires together all 4 engines:
 All endpoints are real — no mocks, no hardcoded responses.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -22,6 +26,22 @@ import shutil
 import psutil
 import json
 import os
+
+# ── Sentry — initialise before any app code (gated by SENTRY_DSN env var) ─────
+_sentry_dsn = os.environ.get("SENTRY_DSN", "")
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[FastApiIntegration(), StarletteIntegration()],
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_RATE", "0.1")),
+        environment=os.environ.get("APP_ENV", "production"),
+        release="sentinel-disk-pro@2.0.0",
+        send_default_pii=False,   # GDPR — no user PII unless opted in
+    )
+    logging.getLogger("sentinel").info("✅ Sentry error monitoring enabled")
 
 from smart_reader import SMARTReader
 from health_engine import HealthPredictionEngine
@@ -84,12 +104,22 @@ app_settings = load_settings()
 # Per-drive compression mode overrides (in-memory)
 drive_compression_overrides: Dict[str, str] = {}
 
+# ── Rate Limiter ──────────────────────────────────────────────────────────────
+_rate_limit = os.environ.get("RATE_LIMIT_PER_MIN", "60")
+limiter = Limiter(key_func=get_remote_address, default_limits=[f"{_rate_limit}/minute"])
+
 # ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="SENTINEL-DISK Pro API",
     description="Real drive health monitoring, prediction, and life extension.",
     version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
+
+# Attach rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: read from env var ALLOWED_ORIGINS (comma-separated) or default to localhost dev ports
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
@@ -120,6 +150,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Firebase JWT Auth (optional — enabled by FIREBASE_PROJECT_ID env var) ─────
+_firebase_project_id = os.environ.get("FIREBASE_PROJECT_ID", "").strip()
+if _firebase_project_id:
+    from middleware.auth import FirebaseAuthMiddleware
+    app.add_middleware(FirebaseAuthMiddleware, project_id=_firebase_project_id)
+    logger.info(f"✅ Firebase auth middleware enabled (project: {_firebase_project_id})")
+else:
+    logger.warning("⚠️  FIREBASE_PROJECT_ID not set — API endpoints are UNAUTHENTICATED (dev mode)")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -757,10 +796,11 @@ async def reset_settings():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/v1/report/{drive_id}")
-async def generate_drive_report(drive_id: str):
+@limiter.limit("10/minute")   # PDF generation is CPU-intensive — stricter limit
+async def generate_drive_report(request: Request, drive_id: str):
     """
-    Generate and download a PDF health report for a drive.
-    Uses reportlab to build a styled, printable report.
+    Generate and download a PDF Warranty Claim Report for a drive.
+    Rate limited to 10 requests/minute per IP.
     """
     from fastapi.responses import StreamingResponse
     from utils.pdf_generator import generate_pdf_report
@@ -777,23 +817,32 @@ async def generate_drive_report(drive_id: str):
         prediction = health_engine.predict(history)
 
         report_data = {
-            "model":         drive_info.get("model", "Unknown"),
-            "serial_number": drive_info.get("serial", "Unknown"),
-            "capacity_gb":   round(drive_info.get("size", 0) / 1e9, 1) if drive_info.get("size") else 0,
-            "health_score":  prediction["health_score"],
-            "risk_level":    prediction["risk_level"],
-            "days_to_failure": prediction["days_to_failure"],
-            "smart_history": [h.get("smart_values", h) for h in history],
+            "model":           drive_info.get("model") or drive_info.get("media_name", "Unknown"),
+            "serial_number":   drive_info.get("serial", "N/A"),
+            "capacity_gb":     round(drive_info.get("size", 0) / 1e9, 1) if drive_info.get("size") else 0,
+            "health_score":    prediction["health_score"],
+            "risk_level":      prediction["risk_level"],
+            "days_to_failure": prediction.get("days_to_failure"),
+            "protocol":        drive_info.get("protocol", "N/A"),
+            "device_path":     drive_info.get("device_path", drive_id),
+            # Pass full history — pdf_generator handles smart_values extraction
+            "smart_history":   history,
         }
 
         pdf_buffer = generate_pdf_report(report_data)
-        filename   = f"SENTINEL_REPORT_{drive_id}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        safe_id    = drive_id.replace("/", "_").replace("\\", "_")
+        filename   = f"SENTINEL_Warranty_Claim_{safe_id}_{datetime.now().strftime('%Y%m%d')}.pdf"
 
         return StreamingResponse(
             pdf_buffer,
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/pdf",
+                "Cache-Control": "no-cache",
+            },
         )
+
     except HTTPException:
         raise
     except Exception as e:

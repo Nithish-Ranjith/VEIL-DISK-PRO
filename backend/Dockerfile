@@ -1,26 +1,31 @@
-# ─── Stage 1: Install dependencies ───────────────────────────────────────────
-FROM python:3.12-slim AS base
+FROM python:3.12-slim
 
-# Install system tools for smartmontools (optional - for real disk access)
-# NOTE: smartctl must be run with --privileged in docker-compose for full access
+# System packages required for SMART data access
 RUN apt-get update && apt-get install -y --no-install-recommends \
     smartmontools \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements and install (cached layer)
+# Install dependencies first (layer-cached)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# ─── Stage 2: Copy source ─────────────────────────────────────────────────────
+# Copy application code
 COPY . .
 
-# Create data directory for settings persistence
-RUN mkdir -p data
+# Create non-root user for security (runs as sentinel:sentinel)
+RUN groupadd -r sentinel && useradd -r -g sentinel sentinel \
+    && mkdir -p /app/data /app/ml/saved_models \
+    && chown -R sentinel:sentinel /app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 EXPOSE 8000
 
-# Use 2 workers for production stability
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Production: gunicorn with uvicorn workers
+# For dev: override CMD with: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+CMD ["gunicorn", "main:app", "-c", "gunicorn.conf.py"]

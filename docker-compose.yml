@@ -1,5 +1,5 @@
 services:
-  # ─── Backend API ────────────────────────────────────────────────────────────
+  # ─── Backend API (Gunicorn + Uvicorn Workers) ─────────────────────────────
   backend:
     build:
       context: ./backend
@@ -8,35 +8,52 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATA_SOURCE=auto
+      # ── Core ──────────────────────────────────────────────────────────────
+      - APP_ENV=${APP_ENV:-production}
       - PORT=8000
-      # Set comma-separated origins or "*" for open access (dev).
-      # Example for production: ALLOWED_ORIGINS=https://yourdomain.com
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DATA_SOURCE=${DATA_SOURCE:-auto}
+
+      # ── CORS ──────────────────────────────────────────────────────────────
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+
+      # ── Auth (set FIREBASE_PROJECT_ID to enable JWT verification) ─────────
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-}
+
+      # ── Rate limiting ──────────────────────────────────────────────────────
+      - RATE_LIMIT_PER_MIN=${RATE_LIMIT_PER_MIN:-60}
+
+      # ── Gunicorn workers ──────────────────────────────────────────────────
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}
+
+      # ── Error monitoring ──────────────────────────────────────────────────
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_RATE=${SENTRY_TRACES_RATE:-0.1}
+
     volumes:
       # Persist settings across container restarts
-      - ./backend/data:/app/data
-      # Mount for ML models (if available)
+      - sentinel_data:/app/data
+      # ML models (read-only — place .keras files here)
       - ./backend/ml:/app/ml:ro
+
     # Required for smartctl to access real disk devices
-    # Remove 'privileged' if you only want simulated data
     privileged: true
     restart: unless-stopped
+
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
-  # ─── Frontend (React + Nginx) ────────────────────────────────────────────────
+  # ─── Frontend (React + Nginx) ─────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Override this to point to your deployed backend
-        # Example: VITE_API_URL=https://api.yourdomain.com/api/v1
+        # Must be publicly reachable from the user's browser
         - VITE_API_URL=${VITE_API_URL:-http://localhost:8000/api/v1}
     container_name: sentinel-frontend
     ports:
@@ -46,6 +63,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+# ─── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  sentinel_data:
+    driver: local
+
+# ─── Networks ────────────────────────────────────────────────────────────────
 networks:
   default:
     name: sentinel-network
