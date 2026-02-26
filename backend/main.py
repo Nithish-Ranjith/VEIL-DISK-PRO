@@ -237,6 +237,9 @@ async def get_system_status():
         # OS info
         os_info = f"{platform.system()} {platform.release()}"
 
+        # ML model mode
+        ml_mode = "tcn_model" if (health_engine.model and health_engine.norm_params) else "rule_based"
+
         return {
             "cpu_percent":         round(cpu_pct, 1),
             "memory_percent":      round(mem_pct, 1),
@@ -253,6 +256,8 @@ async def get_system_status():
             "hostname":            platform.node(),
             "algorithm_active":    app_settings.get("algorithm_active", True),
             "auto_adjust":         app_settings.get("auto_adjust", True),
+            "data_source":         app_settings.get("data_source", "auto"),
+            "ml_mode":             ml_mode,
             "timestamp":           datetime.now().isoformat(),
         }
     except Exception as e:

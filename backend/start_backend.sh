@@ -47,5 +47,5 @@ if [ -d "venv" ]; then
     source venv/bin/activate
 fi
 
-echo -e "${GREEN}Starting Uvicorn Server on port 8080...${NC}"
-exec uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+echo -e "${GREEN}Starting Uvicorn Server on port 8090...${NC}"
+exec uvicorn main:app --host 0.0.0.0 --port 8090 --reload

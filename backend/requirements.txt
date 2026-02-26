@@ -28,7 +28,8 @@ httpx>=0.25.0
 sentry-sdk[fastapi]>=1.40.0
 
 # ML (optional — uncomment if you have TensorFlow installed)
-# tensorflow>=2.16.0
+tensorflow>=2.17.0  # Python 3.12 requires 2.17+; tensorflow-cpu not available on macOS arm64
+
 # scikit-learn>=1.4.0
 
 # Windows only

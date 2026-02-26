@@ -82,6 +82,18 @@ class HealthPredictionEngine:
                         break
                 else:
                     print("[HealthEngine] ⚠️  No norm_params found — using model without normalization")
+
+                # ── Startup self-test: run a dummy inference to catch any remaining issues ──
+                try:
+                    dummy = np.zeros((1, self.SEQUENCE_LENGTH, len(self.FEATURE_KEYS)), dtype=np.float32)
+                    result = float(self.model.predict(dummy, verbose=0)[0][0])
+                    assert 0.0 <= result <= 1.0, f"Output out of range: {result}"
+                    print(f"[HealthEngine] ✅ Self-test passed — dummy inference = {result:.4f}")
+                except Exception as test_err:
+                    print(f"[HealthEngine] ⚠️  Self-test failed ({test_err}) — falling back to rule-based")
+                    self.model = None
+                    self.norm_params = None
+
             except Exception as e:
                 print(f"[HealthEngine] ❌ Model loading failed: {e}")
                 print("[HealthEngine] Falling back to rule-based scoring")

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getDrives, getDriveStatus, getDriveUrgency, getCompressionAnalysis, runOptimization } from './api/client';
 import SystemStatusBar from './components/layout/SystemStatusBar';
 import Header from './components/layout/Header';
@@ -10,7 +10,7 @@ import AIActionFeed from './components/simulation/AIActionFeed';
 import { transformBackendData } from './utils/transformers';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './components/auth/LoginPage';
-import { Heart, Package, TrendingUp, Target } from 'lucide-react';
+import { Heart, Package, TrendingUp, Target, HardDrive, ChevronDown, Database, Save } from 'lucide-react';
 import SetupWizard from './components/setup/SetupWizard';
 
 
@@ -59,6 +59,66 @@ function UrgencyBanner({ urgency }) {
   );
 }
 
+// ─── Custom Drive Selector ────────────────────────────────────────────────────
+function DriveSelector({ drives, selectedDriveId, onSelect, urgency, urgencyConfig }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const selected = drives.find(d => d.drive_id === selectedDriveId);
+
+  // Determine health dot colour from urgency
+  const dotColor = urgencyConfig
+    ? urgencyConfig.text.replace('text-', 'bg-').replace('/100', '/80')
+    : 'bg-emerald-400';
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div className="relative min-w-[260px]" ref={ref}>
+      {/* Trigger */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-white/10
+          bg-[#111827] hover:bg-[#151e2e] hover:border-white/20
+          text-sm text-white font-medium
+          transition-all duration-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+      >
+        <HardDrive className="w-4 h-4 text-slate-400 shrink-0" />
+        <span className="flex-1 text-left truncate">{selected?.model ?? 'Select Drive'}</span>
+        <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+        <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute top-full mt-1.5 left-0 right-0 z-50 rounded-xl overflow-hidden
+          bg-[#0f1624] border border-white/10 shadow-2xl shadow-black/60
+          animate-fade-in">
+          {drives.map(d => (
+            <button
+              key={d.drive_id}
+              onClick={() => { onSelect(d.drive_id); setOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left
+                hover:bg-white/[0.05] transition-colors
+                ${d.drive_id === selectedDriveId ? 'bg-blue-500/10 text-blue-300' : 'text-slate-300'}`}
+            >
+              <HardDrive className="w-4 h-4 text-slate-500 shrink-0" />
+              <span className="flex-1 truncate">{d.model}</span>
+              {d.drive_id === selectedDriveId && (
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 // ─── Main Content Wrapper ─────────────────────────────────────────────────────
 function AuthenticatedApp() {
@@ -78,47 +138,51 @@ function AuthenticatedApp() {
 
   const urgency = urgencyData ? (URGENCY_CONFIG[urgencyData.urgency_level] || URGENCY_CONFIG.low) : URGENCY_CONFIG.low;
 
-  // Check for smartctl on mount
-  useEffect(() => {
-    if (user) {
-      // Simple check to see if we should show wizard
-      // In reality, we'd check the API.
-      // For now, let's show it if we are in simulated mode but NOT explicitly dismissed (could use localStorage)
-      const wizardSeen = localStorage.getItem('sentinel_wizard_seen');
-      if (!wizardSeen) {
-        setShowSetupWizard(true);
-      }
-    }
-  }, [user]);
+  // ── SetupWizard: only show if smartctl is genuinely missing (not just offline)
+  // We check after drives are loaded — not on mount — to avoid false positives
+  // during backend cold-start. Respects a localStorage "seen" flag forever.
+  const checkAndMaybeShowWizard = useCallback(async (driveList) => {
+    const wizardSeen = localStorage.getItem('sentinel_wizard_seen');
+    if (wizardSeen) return; // User already dismissed it
+    // Only show wizard if every drive is simulated (backend ran but has no smartctl)
+    const allSimulated = driveList.length > 0 && driveList.every(d => d.is_simulated);
+    if (allSimulated) setShowSetupWizard(true);
+  }, []);
 
-  const closeWizard = () => {
-    setShowSetupWizard(false);
-    localStorage.setItem('sentinel_wizard_seen', 'true');
-  };
-
-  const loadDrives = useCallback(async () => {
+  const loadDrives = useCallback(async (retryCount = 0) => {
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY_MS = 2000;
     try {
       setError(null);
       const response = await getDrives();
       const list = response.drives || [];
       setDrives(list);
-
-      // If we see all drives are simulated, and we haven't shown wizard, maybe show it?
-      // Logic handled by useEffect above for simplicity now.
+      checkAndMaybeShowWizard(list);
 
       if (list.length > 0) {
-        // Default to DRIVE_C (critical scenario) for best demo impact
         const driveC = list.find(d => d.drive_id === 'DRIVE_C');
         setSelectedDriveId(driveC ? 'DRIVE_C' : list[0].drive_id);
       } else {
         setLoading(false);
       }
     } catch (err) {
-      console.error('Failed to load drives:', err);
-      setError('Cannot connect to backend. Make sure the server is running on port 8000.');
-      setLoading(false);
+      if (retryCount < MAX_RETRIES) {
+        // Auto-retry with exponential back-off — handles backend cold-start
+        console.warn(`Backend not ready yet, retrying in ${RETRY_DELAY_MS}ms (${retryCount + 1}/${MAX_RETRIES})…`);
+        setTimeout(() => loadDrives(retryCount + 1), RETRY_DELAY_MS);
+      } else {
+        console.error('Failed to load drives after retries:', err);
+        setError('Cannot connect to backend. Make sure the server is running on port 8090.');
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [checkAndMaybeShowWizard]);
+
+
+  const closeWizard = () => {
+    setShowSetupWizard(false);
+    localStorage.setItem('sentinel_wizard_seen', 'true');
+  };
 
   // ... (Rest of existing hooks)
 
@@ -256,68 +320,17 @@ function AuthenticatedApp() {
       />
 
       <Header
+        currentTab={currentTab}
+        onTabChange={setCurrentTab}
+        drives={drives}
+        selectedDriveId={selectedDriveId}
+        onSelect={setSelectedDriveId}
+        urgency={urgencyData}
+        urgencyConfig={urgency}
         onBackupNow={handleBackupNow}
         optimizing={optimizing}
         dataSource={driveData?.coordinator_status?.data_source || 'simulated'}
       />
-
-      {/* 2.2 Navigation Bar */}
-      <nav className="h-14 px-8 bg-[#0B101B]/80 backdrop-blur-md border-b-[0.5px] border-white/[0.08] flex items-center gap-8 sticky top-16 z-40">
-        {TABS.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            onClick={() => setCurrentTab(id)}
-            className={`h-full flex items-center gap-3 px-2 border-b-2 text-sm font-medium transition-all duration-300 ${currentTab === id
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-slate-500 hover:text-slate-300'
-              } `}
-          >
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {/* 2.3 Context Bar */}
-      <div className="h-16 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <select
-              value={selectedDriveId}
-              onChange={(e) => setSelectedDriveId(e.target.value)}
-              className="bg-[#111827] text-white text-sm border border-white/10 rounded-lg pl-3 pr-10 py-2 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none appearance-none min-w-[240px] shadow-sm font-medium"
-            >
-              {drives.map(d => (
-                <option key={d.drive_id} value={d.drive_id}>
-                  💾 {d.model}
-                </option>
-              ))}
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
-          </div>
-
-          {urgencyData && (
-            <div className={`px - 2 py - 1 rounded border ${urgency.bg} ${urgency.border} ${urgency.text} text - [10px] font - bold uppercase tracking - wider`}>
-              {urgency.label}
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={handleBackupNow}
-          disabled={optimizing}
-          className={`bg - gradient - to - r from - blue - 600 to - blue - 500 hover: from - blue - 500 hover: to - blue - 400 text - white text - sm font - medium px - 5 py - 2 rounded - lg shadow - lg shadow - blue - 900 / 20 border border - white / 10 transition - all flex items - center gap - 2 ${optimizing ? 'opacity-70 cursor-not-allowed' : ''} `}
-        >
-          {optimizing ? (
-            <>
-              <span className="w-3 h-3 border-2 border-white/80 border-t-transparent rounded-full animate-spin"></span>
-              <span>Processing...</span>
-            </>
-          ) : (
-            'Backup Now'
-          )}
-        </button>
-      </div>
 
       <main className="flex-1 px-6 pb-12">
         <div className="max-w-[1600px] mx-auto">

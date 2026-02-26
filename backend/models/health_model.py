@@ -13,8 +13,10 @@ that match the patterns observed in real drive failure data.
 """
 
 import math
+import os
 import numpy as np
 from typing import Optional
+
 
 # ─── SMART Attribute Weights (Backblaze failure correlation data) ─────────────
 # Higher weight = stronger correlation with drive failure

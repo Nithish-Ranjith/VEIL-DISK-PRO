@@ -50,9 +50,45 @@ const LifeExtensionContainer = ({ selectedDrive }) => {
 
     if (loading) {
         return (
-            <div className="p-12 text-center h-full flex flex-col items-center justify-center">
-                <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4 shadow-[0_0_15px_rgba(16,185,129,0.4)]"></div>
-                <p className="text-emerald-500/80 text-xs font-bold tracking-widest uppercase animate-pulse">Analyzing Drive History...</p>
+            <div className="space-y-6 animate-pulse p-1">
+                {/* Skeleton: hero stat cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="glass-panel rounded-xl p-8">
+                            <div className="h-3 w-24 bg-slate-700/60 rounded mb-4" />
+                            <div className="h-10 w-32 bg-slate-700/40 rounded mb-4" />
+                            <div className="h-1 w-full bg-slate-800 rounded-full">
+                                <div className="h-1 w-1/3 bg-slate-600 rounded-full" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {/* Skeleton: timeline card */}
+                <div className="card rounded-xl overflow-hidden">
+                    <div className="px-5 py-4 border-b border-white/5 bg-white/[0.02]">
+                        <div className="h-3 w-40 bg-slate-700/60 rounded" />
+                    </div>
+                    <div className="p-8 space-y-10">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="ml-10 relative">
+                                <div className="absolute -left-[45px] top-0">
+                                    <div className="w-3 h-3 rounded-full bg-slate-700 border-2 border-slate-600" />
+                                </div>
+                                <div className="glass-panel rounded-lg p-5 space-y-2">
+                                    <div className="h-3 w-32 bg-slate-700/60 rounded" />
+                                    <div className="h-2 w-full bg-slate-700/30 rounded" />
+                                    <div className="h-2 w-4/5 bg-slate-700/30 rounded" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="flex justify-center pt-4">
+                    <div className="flex items-center gap-3 text-emerald-500/60">
+                        <div className="w-4 h-4 border-2 border-emerald-500/60 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold tracking-widest uppercase">Analyzing Drive History…</span>
+                    </div>
+                </div>
             </div>
         );
     }

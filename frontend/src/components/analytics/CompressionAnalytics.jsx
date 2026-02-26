@@ -16,21 +16,51 @@ const CompressionAnalytics = ({ data, driveId, onOptimize, writeOpsHistory = [] 
     // Ensure writeOpsHistory is populated from data if not passed as prop (fallback)
     const effectiveHistory = writeOpsHistory.length > 0 ? writeOpsHistory : (data.write_ops_history || []);
 
-    // Data handling
-    const pieData = by_file_type.map(item => {
-        const typeLower = item.type.toLowerCase();
-        let color = '#94a3b8'; // default slate-400
-        if (typeLower.includes('image')) color = '#22d3ee';      // Cyan (Images)
-        else if (typeLower.includes('data') || typeLower.includes('sql')) color = '#f472b6'; // Pink (Database)
-        else if (typeLower.includes('doc') || typeLower.includes('text')) color = '#3b82f6'; // Blue (Documents)
-        else if (typeLower.includes('video') || typeLower.includes('media')) color = '#a855f7'; // Purple (Media)
+    // Human-readable category labels
+    const CATEGORY_LABELS = {
+        text: 'Text & Code',
+        documents: 'Office Docs',
+        pdf: 'PDF Files',
+        images_lossless: 'Lossless Images',
+        databases: 'Databases',
+        archives_recompressible: 'Archives',
+        skip: 'Already Compressed',
+    };
 
-        return {
-            name: item.type,
-            value: item.size_gb,
-            color
-        };
-    }).filter(d => d.value > 0);
+    // Pie: Exclude already-compressed files — they skew everything
+    const pieData = by_file_type
+        .filter(item => !item.type.toLowerCase().includes('skip'))
+        .map(item => {
+            const typeLower = item.type.toLowerCase();
+            let color = '#6366f1';
+            if (typeLower.includes('image')) color = '#22d3ee';
+            else if (typeLower === 'databases') color = '#f472b6';
+            else if (typeLower === 'documents') color = '#3b82f6';
+            else if (typeLower === 'text') color = '#a855f7';
+            else if (typeLower === 'pdf') color = '#f59e0b';
+            else if (typeLower.includes('archive')) color = '#10b981';
+
+            return {
+                name: CATEGORY_LABELS[item.type] || item.type,
+                value: item.size_gb,
+                savings: item.saved_gb,
+                color,
+            };
+        }).filter(d => d.value > 0);
+
+    // Bar chart: savings by category (sorted by savings desc)
+    const savingsData = [...by_file_type]
+        .filter(item => !item.type.toLowerCase().includes('skip') && item.saved_gb > 0)
+        .map(item => ({
+            label: CATEGORY_LABELS[item.type] || item.type,
+            savings: item.saved_gb,
+            size: item.size_gb,
+        }))
+        .sort((a, b) => b.savings - a.savings)
+        .slice(0, 6);
+
+    // Max value for bar scaling
+    const maxSavings = savingsData.length > 0 ? savingsData[0].savings : 1;
 
     const handleOptimizeClick = async () => {
         setOptimizing(true);
@@ -101,11 +131,14 @@ const CompressionAnalytics = ({ data, driveId, onOptimize, writeOpsHistory = [] 
             {/* ── Row 2: Visual Analytics ───────────────────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 animate-fade-in delay-300">
 
-                {/* Distribution Chart */}
+                {/* Distribution Chart — compressible files only, skip excluded */}
                 <div className="card p-5 h-[320px] flex flex-col">
-                    <div className="flex items-center gap-2 mb-4">
-                        <BarChart2 className="w-4 h-4 text-slate-500" />
-                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Distribution</h3>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <BarChart2 className="w-4 h-4 text-slate-500" />
+                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">File Distribution</h3>
+                        </div>
+                        <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider">compressible files only</span>
                     </div>
                     <div className="flex-1 relative">
                         <ResponsiveContainer width="100%" height="100%">
@@ -116,28 +149,27 @@ const CompressionAnalytics = ({ data, driveId, onOptimize, writeOpsHistory = [] 
                                     cy="50%"
                                     innerRadius={70}
                                     outerRadius={90}
-                                    paddingAngle={5}
+                                    paddingAngle={4}
                                     dataKey="value"
                                     cornerRadius={4}
                                     stroke="none"
-                                    onClick={(data) => {
-                                        setSelectedFileType(data.name);
-                                    }}
+                                    onClick={(data) => setSelectedFileType(data.name)}
                                     cursor="pointer"
                                 >
                                     {pieData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} className="hover:opacity-80 transition-opacity" />
+                                        <Cell key={`cell-${index}`} fill={entry.color} opacity={0.9} className="hover:opacity-100 transition-opacity" />
                                     ))}
                                 </Pie>
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#0B101B', borderColor: 'rgba(255,255,255,0.1)', fontSize: '12px' }}
+                                    contentStyle={{ backgroundColor: '#0d1624', borderColor: 'rgba(255,255,255,0.1)', fontSize: '12px', borderRadius: '8px' }}
                                     itemStyle={{ color: '#fff' }}
+                                    formatter={(val, name, props) => [`${val.toFixed(1)} GB  ·  saves ${(props.payload.savings || 0).toFixed(1)} GB`, props.payload.name]}
                                 />
                                 <Legend
                                     verticalAlign="bottom"
                                     height={36}
                                     iconType="circle"
-                                    formatter={(value) => <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 ml-1">{value}</span>}
+                                    formatter={(value) => <span className="text-[10px] font-medium text-slate-400 ml-1">{value}</span>}
                                 />
                             </PieChart>
                         </ResponsiveContainer>
@@ -148,62 +180,49 @@ const CompressionAnalytics = ({ data, driveId, onOptimize, writeOpsHistory = [] 
                     </div>
                 </div>
 
-                {/* Compression Efficiency */}
+                {/* Compression Savings — horizontal bars, sorted by savings */}
                 <div className="card p-5 h-[320px] flex flex-col">
-                    <div className="flex items-center gap-2 mb-4">
-                        <FileText className="w-4 h-4 text-slate-500" />
-                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Compression Efficiency</h3>
-                    </div>
-                    <div className="flex-1">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                                data={by_file_type}
-                                layout="vertical"
-                                margin={{ left: 20, right: 30, top: 10, bottom: 0 }}
-                                barCategoryGap={15}
-                                onClick={(data) => {
-                                    if (data && data.activePayload && data.activePayload[0]) {
-                                        setSelectedFileType(data.activePayload[0].payload.type);
-                                    }
-                                }}
-                                cursor="pointer"
-                            >
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.05)" />
-                                <XAxis type="number" hide />
-                                <YAxis dataKey="type" type="category" width={80} stroke="#64748b" fontSize={10} tickLine={false} axisLine={false} fontWeight={500} />
-                                <Tooltip
-                                    cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                                    content={({ active, payload }) => {
-                                        if (active && payload && payload.length) {
-                                            return (
-                                                <div className="bg-[#0B101B] border border-white/10 p-2 rounded shadow-xl text-xs">
-                                                    <div className="font-bold text-slate-300 mb-1">{payload[0].payload.type}</div>
-                                                    <div className="text-blue-400">Compressed: {payload[0].value.toFixed(1)} GB</div>
-                                                    <div className="text-slate-500">Original: {payload[1].value.toFixed(1)} GB</div>
-                                                </div>
-                                            );
-                                        }
-                                        return null;
-                                    }}
-                                />
-                                <Bar dataKey="compressed_gb" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} barSize={12} name="Compressed" />
-                                <Bar dataKey="original_gb" stackId="a" fill="#334155" radius={[0, 4, 4, 0]} barSize={12} name="Original Size" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                        <div className="flex justify-center gap-4 mt-2">
-                            <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-400">
-                                <div className="w-2 h-2 bg-blue-500 rounded-sm"></div> Compressed
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-slate-400">
-                                <div className="w-2 h-2 bg-slate-700 rounded-sm"></div> Original
-                            </div>
+                    <div className="flex items-center justify-between mb-5">
+                        <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-slate-500" />
+                            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Savings by Category</h3>
                         </div>
+                        <span className="text-[9px] text-slate-500 font-mono">top {savingsData.length} types</span>
                     </div>
+                    {savingsData.length === 0 ? (
+                        <div className="flex-1 flex items-center justify-center text-slate-600 text-xs uppercase tracking-widest">
+                            No compressible data found
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col justify-between gap-2 overflow-y-auto pr-1">
+                            {savingsData.map((item, idx) => {
+                                const pct = maxSavings > 0 ? (item.savings / maxSavings) * 100 : 0;
+                                const colors = ['#6366f1', '#3b82f6', '#22d3ee', '#10b981', '#f59e0b', '#a855f7'];
+                                const col = colors[idx % colors.length];
+                                return (
+                                    <div key={item.label} className="group">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-[11px] text-slate-400 font-medium group-hover:text-slate-200 transition-colors">{item.label}</span>
+                                            <span className="text-[11px] font-mono font-bold" style={{ color: col }}>
+                                                -{item.savings.toFixed(1)} GB
+                                            </span>
+                                        </div>
+                                        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full transition-all duration-700"
+                                                style={{ width: `${pct}%`, backgroundColor: col }}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* ── Row 3: Active Recommendations ─────────────────────────────────── */}
-            <div className="card p-0 animate-fade-in delay-500">
+            {/* ── Row 3: Active Recommendations (with scroll fade) ─────────────────────── */}
+            <div className="card p-0 animate-fade-in delay-500 relative">
                 <div className="px-5 py-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
                     <div className="flex items-center gap-2">
                         <Zap className="w-4 h-4 text-emerald-500" />

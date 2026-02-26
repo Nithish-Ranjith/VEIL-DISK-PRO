@@ -4,6 +4,70 @@ import ExplainableAI from '../simulation/ExplainableAI';
 import WriteOptimizationCard from '../optimization/WriteOptimizationCard';
 import { API_BASE } from '../../api/client';
 
+// ─── Hero: Health Score Ring ──────────────────────────────────────────────────
+function HealthScoreRing({ score = 0, daysToFailure = null }) {
+    const size = 160;
+    const strokeW = 12;
+    const r = (size - strokeW) / 2;
+    const circ = 2 * Math.PI * r;
+    const progress = Math.min(100, Math.max(0, score));
+    const offset = circ - (progress / 100) * circ;
+
+    let ringColor = '#10b981';   // emerald — healthy
+    let statusLabel = 'HEALTHY';
+    let labelClass = 'text-emerald-400';
+    if (score < 50) { ringColor = '#ef4444'; statusLabel = 'CRITICAL'; labelClass = 'text-red-400'; }
+    else if (score < 75) { ringColor = '#f59e0b'; statusLabel = 'WARNING'; labelClass = 'text-amber-400'; }
+
+    return (
+        <div className="flex items-center gap-8">
+            {/* SVG ring */}
+            <div className="relative shrink-0">
+                <svg width={size} height={size} className="-rotate-90">
+                    {/* Track */}
+                    <circle cx={size / 2} cy={size / 2} r={r}
+                        fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={strokeW} />
+                    {/* Progress arc */}
+                    <circle cx={size / 2} cy={size / 2} r={r}
+                        fill="none"
+                        stroke={ringColor}
+                        strokeWidth={strokeW}
+                        strokeLinecap="round"
+                        strokeDasharray={circ}
+                        strokeDashoffset={offset}
+                        style={{
+                            filter: `drop-shadow(0 0 8px ${ringColor}80)`,
+                            transition: 'stroke-dashoffset 1s ease-out, stroke 0.5s',
+                        }}
+                    />
+                </svg>
+                {/* Center text */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-4xl font-black text-white font-numbers leading-none">{score}</span>
+                    <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">/100</span>
+                </div>
+            </div>
+
+            {/* Right side info */}
+            <div>
+                <div className={`text-xs font-bold uppercase tracking-widest mb-1 ${labelClass}`}>{statusLabel}</div>
+                <div className="text-2xl font-bold text-white mb-1">Drive Health Score</div>
+                <div className="text-xs text-slate-500 max-w-xs">
+                    Predictive health based on SMART attributes, write amplification, and thermal history.
+                </div>
+                {daysToFailure && daysToFailure < 365 && (
+                    <div className="mt-3 flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        <span className="text-xs text-amber-400 font-mono font-bold">
+                            ~{daysToFailure} days estimated remaining
+                        </span>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 const HealthMonitor = ({ data, urgency, driveId, compressionData }) => {
     if (!data) return <div className="p-4 text-gray-400">Loading health data...</div>;
 
@@ -64,7 +128,28 @@ const HealthMonitor = ({ data, urgency, driveId, compressionData }) => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 p-1">
-            {/* ── Row 1: Health Timeline (66%) + Write Optimization (33%) ─────── */}
+
+            {/* ─── HERO: Health Score Ring (full-width) ──────────────────────── */}
+            <div className="col-span-12 card p-6 flex items-center justify-between animate-fade-in">
+                <HealthScoreRing score={score} daysToFailure={health.days_to_failure} />
+
+                {/* Right: quick stats summary */}
+                <div className="hidden md:grid grid-cols-3 gap-8 border-l border-white/5 pl-8">
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-white font-numbers">{tbwRemaining}%</div>
+                        <div className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">TBW Remaining</div>
+                    </div>
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-white font-numbers">{Math.round(writesReduced)}%</div>
+                        <div className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Writes Reduced</div>
+                    </div>
+                    <div className="text-center">
+                        <div className="text-2xl font-bold text-white font-numbers">{(powerOnHours / 1000).toFixed(1)}k</div>
+                        <div className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Hours On</div>
+                    </div>
+                </div>
+            </div>
+
 
             {/* Health Timeline — 8/12 ≈ 66.6% */}
             <div className="col-span-12 lg:col-span-8 animate-fade-in group relative hover-scale prism-border">

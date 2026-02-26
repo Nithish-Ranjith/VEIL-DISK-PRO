@@ -1,5 +1,5 @@
 import React from 'react';
-import { AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts';
 
 // Generate data: historical + predicted
 const generateChartData = (healthScore, daysToFailure) => {
@@ -43,7 +43,7 @@ const generateChartData = (healthScore, daysToFailure) => {
 };
 
 const HealthTimelineChart = ({ currentHealth = 68, daysToFailure = 62 }) => {
-    const data = generateChartData(currentHealth, daysToFailure);
+    const data = generateChartData(currentHealth, daysToFailure || 62);
 
     const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
@@ -51,19 +51,19 @@ const HealthTimelineChart = ({ currentHealth = 68, daysToFailure = 62 }) => {
 
             if (point.isFailurePoint) {
                 return (
-                    <div className="bg-[#DC2626]/95 border border-red-200/30 text-center p-4 rounded-xl shadow-2xl backdrop-blur-sm">
-                        <div className="text-3xl mb-2">⚠️</div>
-                        <div className="text-2xl font-bold text-white mb-1">{daysToFailure} Days</div>
-                        <div className="text-sm text-white/90">Predicted Failure</div>
+                    <div className="custom-tooltip failure-tooltip">
+                        <div className="tooltip-icon">⚠️</div>
+                        <div className="tooltip-title">{daysToFailure} Days</div>
+                        <div className="tooltip-subtitle">Predicted Failure</div>
                     </div>
                 );
             }
 
             return (
-                <div className="bg-[#0F172A]/95 border border-slate-400/30 p-3 rounded-xl shadow-xl backdrop-blur-sm">
-                    <div className="text-xs text-slate-400 mb-1">{point.date}</div>
-                    <div className="text-base font-semibold text-slate-100 mb-1">Health: {point.health}%</div>
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider">
+                <div className="custom-tooltip">
+                    <div className="tooltip-date">{point.date}</div>
+                    <div className="tooltip-health">Health: {point.health}%</div>
+                    <div className="tooltip-type">
                         {point.type === 'predicted' ? '📊 Forecast' : '📈 Historical'}
                     </div>
                 </div>
@@ -73,124 +73,121 @@ const HealthTimelineChart = ({ currentHealth = 68, daysToFailure = 62 }) => {
     };
 
     return (
-        <div className="card h-full flex flex-col p-5 relative overflow-hidden">
-            {/* Background enhancement */}
-            <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-900/5 to-transparent pointer-events-none"></div>
-
-            <div className="flex justify-between items-start mb-6 z-10">
-                <div>
-                    <h3 className="text-lg font-bold text-gray-100 tracking-tight">AI Health Timeline</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-1">Predictive analysis based on write amplification trends</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-800/50 px-2 py-1 rounded border border-white/5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Historical
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-slate-800/50 px-2 py-1 rounded border border-white/5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span> Forecast
-                    </span>
-                </div>
+        <div className="health-timeline-card bg-transparent h-full w-full flex flex-col p-4">
+            <div className="card-header flex justify-between items-center mb-4 bg-transparent border-none p-0">
+                <h3 className="text-lg font-bold text-gray-100">AI Health Timeline</h3>
+                <button className="card-menu text-gray-500 hover:text-white transition-colors">⋯</button>
             </div>
 
-            <div className="flex-1 w-full min-h-0 z-10">
+            <div className="flex-1 w-full min-h-0">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: 20, right: 30, left: -20, bottom: 0 }}>
-                        <defs>
-                            <linearGradient id="colorHealth" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                            </linearGradient>
-                            <linearGradient id="colorPrediction" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#F97316" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
-                            </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                    <LineChart data={data} margin={{ top: 20, right: 40, left: -20, bottom: 0 }}>
+                        {/* Grid */}
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
 
+                        {/* Axes */}
                         <XAxis
                             dataKey="date"
-                            stroke="#475569"
-                            fontSize={10}
+                            stroke="#64748B"
+                            fontSize={12}
+                            interval="preserveStartEnd"
                             tickLine={false}
                             axisLine={false}
-                            minTickGap={40}
                             dy={10}
                         />
                         <YAxis
-                            stroke="#475569"
-                            fontSize={10}
+                            stroke="#64748B"
+                            fontSize={12}
+                            domain={[0, 100]}
                             tickLine={false}
                             axisLine={false}
-                            domain={[0, 100]}
-                            ticks={[0, 25, 50, 75, 100]}
+                        />
+
+                        {/* Safe Zone (top) */}
+                        <ReferenceArea
+                            y1={75}
+                            y2={100}
+                            fill="#10B981"
+                            fillOpacity={0.1}
+                        />
+                        <ReferenceLine
+                            y={75}
+                            stroke="transparent"
+                            label={{
+                                value: 'SAFE - ZONE',
+                                position: 'insideTopRight',
+                                fill: '#10B981',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                dx: -10
+                            }}
                         />
 
                         {/* Critical Zone (bottom) */}
                         <ReferenceArea
                             y1={0}
-                            y2={40}
+                            y2={35}
                             fill="#DC2626"
-                            fillOpacity={0.03}
+                            fillOpacity={0.1}
                         />
                         <ReferenceLine
-                            y={40}
+                            y={35}
                             stroke="#DC2626"
-                            strokeDasharray="4 4"
-                            strokeOpacity={0.3}
+                            strokeDasharray="5 5"
                             label={{
-                                value: '- CRITICAL -',
-                                position: 'right',
+                                value: 'CRITICAL',
+                                position: 'insideBottomRight',
                                 fill: '#DC2626',
-                                fontSize: 9,
-                                fontWeight: 800,
-                                offset: 10,
-                                opacity: 0.7
-                            }}
-                        />
-
-                        {/* Safe Zone Annotations */}
-                        <ReferenceLine
-                            y={85}
-                            stroke="#10B981"
-                            strokeDasharray="0"
-                            strokeOpacity={0.0}
-                            label={{
-                                value: 'SAFE - ZONE',
-                                position: 'insideTopRight',
-                                fill: '#10B981',
-                                fontSize: 9,
-                                fontWeight: 800,
-                                opacity: 0.6,
+                                fontSize: 12,
+                                fontWeight: 600,
                                 dx: -10
                             }}
                         />
 
-                        {/* Historical Area (Blue) */}
-                        <Area
+                        {/* Critical Badge on right side */}
+                        {/* Use standard text coordinate relative to SVG if needed, but recharts ReferenceLine label works */}
+
+                        {/* Historical Line (Blue) */}
+                        <Line
                             type="monotone"
                             dataKey="health"
                             stroke="#3B82F6"
                             strokeWidth={3}
-                            fill="url(#colorHealth)"
+                            dot={false}
                             data={data.filter(d => d.type === 'historical')}
                             isAnimationActive={true}
-                            animationDuration={1500}
                         />
 
-                        {/* Predicted Area (Orange) */}
+                        {/* Predicted Line (Orange/Red gradient) */}
                         <Line
                             type="monotone"
                             dataKey="health"
                             stroke="#F97316"
                             strokeWidth={3}
-                            strokeDasharray="4 4"
+                            strokeDasharray="5 5"
                             dot={(props) => {
                                 if (props.payload.isFailurePoint) {
                                     return (
                                         <g key={props.key}>
-                                            <line x1={props.cx} y1={props.cy} x2={props.cx} y2={props.cy + 150} stroke="#DC2626" strokeWidth={1} strokeDasharray="2 2" opacity={0.5} />
-                                            <circle cx={props.cx} cy={props.cy} r={4} fill="#DC2626" stroke="#fff" strokeWidth={1.5} className="animate-ping" opacity={0.5} />
-                                            <circle cx={props.cx} cy={props.cy} r={4} fill="#DC2626" stroke="#fff" strokeWidth={1.5} />
+                                            {/* Failure marker */}
+                                            <circle
+                                                cx={props.cx}
+                                                cy={props.cy}
+                                                r={8}
+                                                fill="#DC2626"
+                                                stroke="#FEE2E2"
+                                                strokeWidth={3}
+                                            />
+                                            {/* Vertical line to bottom */}
+                                            <line
+                                                x1={props.cx}
+                                                y1={props.cy}
+                                                x2={props.cx}
+                                                y2={props.cy + 100}
+                                                stroke="#DC2626"
+                                                strokeWidth={2}
+                                                strokeDasharray="3 3"
+                                            />
                                         </g>
                                     );
                                 }
@@ -198,13 +195,10 @@ const HealthTimelineChart = ({ currentHealth = 68, daysToFailure = 62 }) => {
                             }}
                             data={data.filter(d => d.type === 'predicted')}
                             isAnimationActive={true}
-                            animationDuration={1500}
-                            animationBegin={1000}
                         />
 
-                        {/* Highlight Badge for Prediction */}
-                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
-                    </AreaChart>
+                        <Tooltip content={<CustomTooltip />} />
+                    </LineChart>
                 </ResponsiveContainer>
             </div>
         </div>
