@@ -83,6 +83,17 @@ else
 fi
 
 rm -f "$PID_FILE"
+
+# ── Auto-heal: remove any root-owned health cache files (from past sudo run) ---
+DATA_DIR="$BACKEND_DIR/data"
+if [[ -d "$DATA_DIR" ]]; then
+  while IFS= read -r -d '' f; do
+    if [[ ! -w "$f" ]]; then
+      rm -f "$f" 2>/dev/null && echo -e "   ${YELLOW}Removed root-owned cache: $(basename "$f")${NC}" || true
+    fi
+  done < <(find "$DATA_DIR" -name "health_cache_*.json" -print0 2>/dev/null)
+fi
+
 nohup uvicorn main:app --host 0.0.0.0 --port "$BACKEND_PORT" > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$PID_FILE"
