@@ -1,0 +1,31 @@
+# SENTINEL-DISK Pro — Cloud requirements (Render / Vercel serverless / Docker)
+# TensorFlow is intentionally excluded — 600MB package OOMs on Render free tier.
+# The backend auto-detects TF is absent and falls back to the validated rule-based
+# health engine, which produces identical results on healthy drives.
+
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+gunicorn>=21.2.0
+numpy>=1.26.4
+pandas>=2.1.4
+pydantic==2.4.2
+python-multipart==0.0.6
+
+# System monitoring
+psutil>=5.9.0
+
+# PDF report generation
+reportlab>=4.0.0
+
+# Filesystem watching (needed by uvicorn workers in prod)
+watchfiles>=0.21.0
+
+# Rate limiting
+slowapi>=0.1.9
+
+# Firebase JWT token verification
+python-jose[cryptography]>=3.3.0
+httpx>=0.25.0
+
+# Error monitoring (Sentry) — set SENTRY_DSN env var to enable
+sentry-sdk[fastapi]>=1.40.0

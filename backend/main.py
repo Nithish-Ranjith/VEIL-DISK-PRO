@@ -85,14 +85,20 @@ DEFAULT_SETTINGS = {
 }
 
 def load_settings() -> Dict:
+    settings = DEFAULT_SETTINGS.copy()
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE) as f:
                 saved = json.load(f)
-            return {**DEFAULT_SETTINGS, **saved}
+            settings = {**settings, **saved}
         except Exception:
             pass
-    return DEFAULT_SETTINGS.copy()
+    # Environment variables override persisted settings (e.g. Render/Docker env)
+    env_data_source = os.environ.get("DATA_SOURCE", "").strip().lower()
+    if env_data_source in ("simulated", "real", "auto"):
+        settings["data_source"] = env_data_source
+    return settings
+
 
 def save_settings(settings: Dict):
     os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)

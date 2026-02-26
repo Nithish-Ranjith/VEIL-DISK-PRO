@@ -7,6 +7,11 @@ backend/data/settings.json
 *.py[cod]
 *.egg-info/
 .env
+# Security: never commit service account keys or credentials
+backend/config/
+# Sample/test data files
+SAMPLE_DATA.json
+
 
 # ML Models (Large files - add separately or use Git LFS)
 backend/ml/saved_models/*.keras
@@ -28,5 +33,7 @@ Thumbs.db
 
 # Logs
 *.log
-*.json
+# Backend runtime JSON (intervention logs, health cache — not source code)
+backend/data/*.json
+
 backend/ml/data/

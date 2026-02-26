@@ -2,8 +2,25 @@ services:
   - type: web
     name: sentinel-disk-pro-backend
     env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.cloud.txt
+    startCommand: gunicorn main:app -c gunicorn.conf.py
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.0
+        value: "3.12.0"
+      - key: LOG_LEVEL
+        value: info
+      - key: GUNICORN_WORKERS
+        value: "1"
+      # Set data_source to simulated — no real drives on cloud
+      - key: DATA_SOURCE
+        value: simulated
+      # Set ALLOWED_ORIGINS to your Vercel URL after deploying frontend
+      # e.g. https://sentinel-disk-pro.vercel.app
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      # Optional: set SENTRY_DSN for error monitoring
+      # - key: SENTRY_DSN
+      #   value: your-dsn-here
